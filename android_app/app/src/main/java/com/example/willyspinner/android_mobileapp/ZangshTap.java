@@ -1,5 +1,4 @@
 package com.example.willyspinner.android_mobileapp;
-
 public class ZangshTap {
     private double lat,lng;
     private long timestamp;
