@@ -1,5 +1,4 @@
 package com.example.willyspinner.android_mobileapp;
-
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.location.Location;
@@ -7,17 +6,27 @@ import android.os.CountDownTimer;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 
+import java.io.IOException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Iterator;
+
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -27,25 +36,23 @@ public class MainActivity extends AppCompatActivity {
     ProgressBar progressBar;
 
     // variables:
-    long ZPM_INTERVAL_MS = 15000; // milliseconds.
+    final long ZPM_INTERVAL_MS = 15000; // milliseconds.
+    final int REQUEST_CODE_PERMISSION = 2;
+    final long MIN_DISTANCE_CHANGE_FOR_UPDATES = 5; // 5 meters
+    final long MIN_TIME_BW_UPDATES = 2000; // 2 secs
+    //final String SERVER_URL = "https://bbb.homelinux.com/zangsh/zpm";
+    final String SERVER_URL = "https://9f9d2c68.ngrok.io:80/zangsh/zpm";
+    String mlocation_permission = Manifest.permission.ACCESS_FINE_LOCATION;
+    String minternet_permission = Manifest.permission.INTERNET;
+
+    // data structures & clients.
     ZangshListJson current_zlj; // zangsh list json. zangsh_taps, as well as timestamp_from.
-    ArrayList<ZangshListJson> zlj_queue; // a queue of ZLJs that we failed to send in the past.
+    ArrayList<ZangshListJson> zlj_backlog_queue; // a queue of ZLJs that we failed to send in the past.
     GPSTracker gps;
-
-    double current_lat = -999;
-    double current_lng = -999;
-    String mPermission = Manifest.permission.ACCESS_FINE_LOCATION;
-    private static final int REQUEST_CODE_PERMISSION = 2;
-
-
-    private static final long MIN_DISTANCE_CHANGE_FOR_UPDATES = 5; // 5 meters
-
-    // The minimum time between updates in milliseconds
-    private static final long MIN_TIME_BW_UPDATES = 2000; // 2 secs
-
+    OkHttpClient http_client;
 
     private void log_toast(String s){
-       Toast.makeText(MainActivity.this, s, Toast.LENGTH_SHORT).show();
+        Toast.makeText(getApplicationContext(), s, Toast.LENGTH_SHORT).show();
     }
 
     private void insert_zangsh (ArrayList<ZangshTap> list){
@@ -55,25 +62,22 @@ public class MainActivity extends AppCompatActivity {
             gps.showSettingsAlert();
             return;
         }
-        current_lat = loc.getLatitude();
-        current_lng = loc.getLongitude();
+        double current_lat = loc.getLatitude();
+        double current_lng = loc.getLongitude();
 
         long currentUnixTime = System.currentTimeMillis() / 1000L;
         ZangshTap new_tap = new ZangshTap(current_lat, current_lng, currentUnixTime);
 
         list.add(new_tap);
-       int  zangsh_count = list.size();
+        int zangsh_count = list.size();
         zangsh_ometer.setText(Integer.toString(zangsh_count));
         if (before_zangsh == 0 && zangsh_count == 1){
             zangshtap_text.setText("zangsh tap");
         } else if (before_zangsh == 1 && zangsh_count == 2){
             zangshtap_text.setText("zangsh taps");
         }
-        GsonBuilder builder = new GsonBuilder();
-        Gson gson = builder.create();
-        log_toast(String.format("INSERTING zangsh of %s", gson.toJson(new_tap)));
-
     }
+
     private void reset_zangsh (ZangshListJson zlj) {
         if (zlj.zangsh_taps== null){
             zlj.zangsh_taps= new ArrayList<ZangshTap>();
@@ -87,14 +91,56 @@ public class MainActivity extends AppCompatActivity {
     /*
     returns true if successful, returns false if not.
      */
-    private boolean publish_zangsh (ZangshListJson zlj) {
+    private void publish_zangsh (ZangshListJson zlj, Publish_zangsh_callback cb) {
+        // parse to json first.
         Gson gson = new Gson();
         String zlj_json = gson.toJson(zlj);
-        log_toast(String.format("PUBLISHING zangsh list of %s, length: %d", zlj_json, zlj.zangsh_taps.size()));
-        //TODO: do the HTTP request here.
-        return true;
+        // now do the http request.
+        MediaType JSON = MediaType.get("application/json; charset=utf-8");
+        RequestBody body = RequestBody.create(JSON,zlj_json);
+        Request request = new Request.Builder()
+            .url(SERVER_URL)
+            .post(body)
+            .addHeader("X-BBB-Auth", "lalala")
+            .build();
+
+        new Thread (new Runnable () {
+            @Override
+            public void run () {
+                try {
+                    Response response =  http_client.newCall (request).execute ();
+                    ServerResponse json_response = gson.fromJson(response.body().toString(), ServerResponse.class);
+                    if (json_response.status.equals("success")) {
+                        cb.on_success();
+                    } else {
+                        cb.on_failure();
+                    }
+                } catch (IOException e) {
+                    Log.e("ERROR TING", e.getMessage());
+                    e.printStackTrace ();
+                    cb.on_failure();
+                }
+            }
+
+        }).start ();
     }
 
+    public void sync_process_backlog () {
+        //TODO: this is the incorrect way. Fix this.
+        if (zlj_backlog_queue.size() > 0) {
+            synchronized (zlj_backlog_queue) {
+                for (Iterator<ZangshListJson> iterator = zlj_backlog_queue.iterator(); iterator.hasNext(); ) {
+                    ZangshListJson past_zlj = iterator.next();
+                    publish_zangsh(past_zlj, new Publish_zangsh_callback(){
+                        @Override
+                        public void on_success() {
+                            zlj_backlog_queue.remove(past_zlj);
+                        }
+                    });
+                }
+            }
+        }
+    }
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -102,22 +148,35 @@ public class MainActivity extends AppCompatActivity {
 
         tap_zangsh = (Button) findViewById(R.id.zangsh_button);
         zangsh_ometer = (TextView) findViewById(R.id.zangsh_ometer);
+        zangsh_ometer.setText("0");
         zangshtap_text = (TextView) findViewById(R.id.zangshtaps_text);
         progressBar = (ProgressBar) findViewById(R.id.progressBar);
+        progressBar.setMax((int)ZPM_INTERVAL_MS);
 
-        zangsh_ometer.setText("0");
-        zlj_queue = new ArrayList<ZangshListJson>();
+        zlj_backlog_queue = new ArrayList<ZangshListJson>();
+        /*      Requesting permissions here */
         try {
-            if (ActivityCompat.checkSelfPermission(this, mPermission)
+            if (ActivityCompat.checkSelfPermission(this, mlocation_permission)
                     != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{mPermission},
+                ActivityCompat.requestPermissions(this, new String[]{mlocation_permission},
                         REQUEST_CODE_PERMISSION);
             }
         } catch (Exception e) {
             e.printStackTrace();
         }
-            // permission granted to use gps. now good:
+        try {
+            if (ActivityCompat.checkSelfPermission(this, minternet_permission)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{minternet_permission},
+                        REQUEST_CODE_PERMISSION);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        // permission granted to use gps. now good:
         gps = new GPSTracker(MainActivity.this,MIN_DISTANCE_CHANGE_FOR_UPDATES, MIN_TIME_BW_UPDATES);
+        //http_client = HttpClient.trustAllSslClient(new OkHttpClient());
+        http_client = Http.client();
 
         tap_zangsh.setOnClickListener(new View.OnClickListener(){
             @Override
@@ -125,7 +184,6 @@ public class MainActivity extends AppCompatActivity {
                 insert_zangsh(current_zlj.zangsh_taps);
             }
         });
-        progressBar.setMax((int)ZPM_INTERVAL_MS);
         new CountDownTimer(ZPM_INTERVAL_MS, 20) {
             public void onTick(long millisUntilFinished) {
                 progressBar.setProgress((int) (ZPM_INTERVAL_MS - millisUntilFinished));
@@ -136,32 +194,31 @@ public class MainActivity extends AppCompatActivity {
                 secRand.nextBytes(objIdBytes);
                 String objId = Base64.getEncoder().encodeToString(objIdBytes);
                 current_zlj.signature = objId;
-                boolean is_successful = publish_zangsh(current_zlj);
-                if (is_successful) {
-                    //log_toast("SUCCESS: zangsh data sent to server.");
-                } else {
-                    log_toast("FAILURE: zangsh data not sent to server.");
-                    zlj_queue.add(current_zlj); // add to queue for later processing.
-                }
+                publish_zangsh(current_zlj, new Publish_zangsh_callback(){
+                    @Override
+                    public void on_success() {
+                        //TODO: if we put toasters here, it will fuck up! don't do that. IDK why.  see https://stackoverflow.com/questions/17379002/java-lang-runtimeexception-cant-create-handler-inside-thread-that-has-not-call
+                    }
+                    @Override
+                    public void on_failure() {
+                        synchronized (zlj_backlog_queue) {
+                            zlj_backlog_queue.add(current_zlj); // add to queue for later processing.
+                        }
+                    }
+                });
+
+                //TODO: process backlog queue here.
+                // see https://stackoverflow.com/questions/24246783/okhttp-response-callbacks-on-the-main-thread
                 start(); // start it again.
                 current_zlj = new ZangshListJson(System.currentTimeMillis() / ((long)1000));
                 reset_zangsh(current_zlj);
 
                 // remove in queue.
-                if (zlj_queue.size() > 0) {
-                    for(ZangshListJson past_zlj: zlj_queue){
-                        boolean queue_removal_successful = publish_zangsh(past_zlj);
-                        if (queue_removal_successful) {
-                            zlj_queue.remove(past_zlj);
-                        }
-                    }
-                }
             }
 
         }.start();
         // initialize current_zlj.
         current_zlj = new ZangshListJson(System.currentTimeMillis()/((long)1000));
         current_zlj.zangsh_taps = new ArrayList<ZangshTap>();
-
     }
 }
