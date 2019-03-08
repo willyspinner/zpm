@@ -194,10 +194,23 @@ public class MainActivity extends AppCompatActivity {
                 publish_zangsh(current_zlj, new Publish_zangsh_callback(){
                     @Override
                     public void on_success() {
-                        //TODO: if we put toasters here, it will fuck up! don't do that. IDK why.  see https://stackoverflow.com/questions/17379002/java-lang-runtimeexception-cant-create-handler-inside-thread-that-has-not-call
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                log_toast(String.format("Post to server successful."));
+
+                            }
+                        });
                     }
                     @Override
                     public void on_failure() {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                log_toast(String.format("Post to server FAILED. Adding to backlog.."));
+
+                            }
+                        });
                         synchronized (zlj_backlog_queue) {
                             zlj_backlog_queue.add(current_zlj); // add to queue for later processing.
                         }

@@ -4,7 +4,6 @@ const safeCompare = require('safe-compare');
 
 // Session validation middleware - used before any protected routes.
 module.exports.authMiddleware = async (req, res, next) => {
-    console.log(' got request:', req.body, req.headers);
     const auth_token= req.headers['x-bbb-auth'];
     if (!auth_token){
         res.status(403).json({
