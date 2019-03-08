@@ -65,12 +65,15 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(getApplicationContext(), s, Toast.LENGTH_SHORT).show();
     }
 
-    private void insert_zangsh (ArrayList<ZangshTap> list){
+    private boolean insert_zangsh (ArrayList<ZangshTap> list){
         int before_zangsh = list.size();
         Location loc = gps.getLocation();
+        if (loc == null) {
+            return false;
+        }
         if(!gps.canGetLocation) {
             gps.showSettingsAlert();
-            return;
+            return false;
         }
         double current_lat = loc.getLatitude();
         double current_lng = loc.getLongitude();
@@ -86,14 +89,19 @@ public class MainActivity extends AppCompatActivity {
         } else if (before_zangsh == 1 && zangsh_count == 2){
             zangshtap_text.setText("zangsh taps");
         }
+        return true;
     }
-    private void decrease_zangsh () {
+    private boolean decrease_zangsh () {
         int size = current_zlj.zangsh_taps.size();
+        if (size == 0){
+            return false;
+        }
         current_zlj.zangsh_taps.remove(size - 1);
         zangsh_ometer.setText(Integer.toString(size - 1));
         if( size == 1) {
             zangshtap_text.setText("zangsh tap");
         }
+        return true;
     }
 
     private void reset_zangsh (ZangshListJson zlj) {
@@ -307,14 +315,20 @@ public class MainActivity extends AppCompatActivity {
         tap_decrease_zangsh.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                decrease_zangsh();
+                boolean success = decrease_zangsh();
+                if (!success) {
+                    log_toast("Already reached 0 zangshes! IS it really THAT bad?");
+                }
             }
         });
 
         tap_zangsh.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View v) {
-                insert_zangsh(current_zlj.zangsh_taps);
+                boolean success = insert_zangsh(current_zlj.zangsh_taps);
+                if (!success) {
+                    log_toast("Unable to get GPS location. Please try again.");
+                }
             }
         });
         new CountDownTimer(ZPM_INTERVAL_MS, 20) {
