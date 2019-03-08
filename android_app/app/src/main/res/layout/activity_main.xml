@@ -58,18 +58,33 @@
             android:indeterminate="false"
             android:visibility="visible" />
 
-        <Button
-            android:id="@+id/zangsh_button"
-            style="@android:style/Widget.Material.Button.Colored"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="145dp"
-            android:fontFamily="@font/cairo_bold"
-            android:lineSpacingExtra="36sp"
-            android:text="Zangsh"
-            android:textSize="50sp"
-            android:typeface="normal"
-            tools:layout_editor_absoluteX="76dp"
-            tools:layout_editor_absoluteY="262dp" />
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/zangsh_button"
+                style="@android:style/Widget.Material.Button.Colored"
+                android:layout_width="294dp"
+                android:layout_height="150dp"
+                android:layout_weight="1"
+                android:fontFamily="@font/cairo_bold"
+                android:lineSpacingExtra="36sp"
+                android:text="Zangsh"
+                android:textSize="50sp"
+                android:typeface="normal"
+                tools:layout_editor_absoluteX="76dp"
+                tools:layout_editor_absoluteY="262dp" />
+
+            <ImageButton
+                android:id="@+id/button_zangsh_decrementer"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                app:srcCompat="@android:drawable/ic_menu_close_clear_cancel" />
+
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -85,9 +100,9 @@
 
                 <TextView
                     android:id="@+id/textview_healthcheck_button"
-                    android:layout_width="wrap_content"
-                    android:layout_height="52dp"
-                    android:layout_marginRight="8px"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_marginRight="10dp"
                     android:layout_weight="1"
                     android:background="@android:color/holo_blue_dark"
                     android:gravity="top|bottom"
@@ -98,12 +113,12 @@
 
                 <TextView
                     android:id="@+id/textview_health_indicator"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:layout_weight="1"
                     android:background="@android:color/holo_red_light"
                     android:gravity="top|bottom"
-                    android:text="UP"
+                    android:text="DOWN"
                     android:textAlignment="center"
                     android:textSize="25sp"
                     android:textStyle="bold" />

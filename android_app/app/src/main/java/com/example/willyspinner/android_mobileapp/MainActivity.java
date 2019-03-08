@@ -13,6 +13,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.animation.Animation;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -33,6 +34,7 @@ import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
     Button tap_zangsh;
+    ImageButton tap_decrease_zangsh;
     TextView zangsh_ometer;
     TextView zangshtap_text;
     TextView zpm_up_indicator;
@@ -83,6 +85,14 @@ public class MainActivity extends AppCompatActivity {
             zangshtap_text.setText("zangsh tap");
         } else if (before_zangsh == 1 && zangsh_count == 2){
             zangshtap_text.setText("zangsh taps");
+        }
+    }
+    private void decrease_zangsh () {
+        int size = current_zlj.zangsh_taps.size();
+        current_zlj.zangsh_taps.remove(size - 1);
+        zangsh_ometer.setText(Integer.toString(size - 1));
+        if( size == 1) {
+            zangshtap_text.setText("zangsh tap");
         }
     }
 
@@ -227,6 +237,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         tap_zangsh = (Button) findViewById(R.id.zangsh_button);
+        tap_decrease_zangsh = (ImageButton) findViewById(R.id.button_zangsh_decrementer);
         zangsh_ometer = (TextView) findViewById(R.id.zangsh_ometer);
         zangsh_ometer.setText("0");
         zangshtap_text = (TextView) findViewById(R.id.zangshtaps_text);
@@ -293,6 +304,12 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        tap_decrease_zangsh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                decrease_zangsh();
+            }
+        });
 
         tap_zangsh.setOnClickListener(new View.OnClickListener(){
             @Override
