@@ -1,0 +1,5 @@
+# NOTE: make a .development.env, .staging.env and .production.env with the
+# following environment variables:
+
+AUTH_TOKEN_SECRET="12t129019hlalalala"
+PG_CONNSTR="postgres://shmrk_user:lalala_password@127.0.0.1/shmrk_data"

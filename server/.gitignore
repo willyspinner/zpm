@@ -1,0 +1,6 @@
+*.env
+node_modules
+.idea
+.nyc_output
+swagger_daemon.pid
+coverage

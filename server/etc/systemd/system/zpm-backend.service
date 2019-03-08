@@ -1,0 +1,19 @@
+[Unit]
+Description=shmrk backend staging service
+After=network.target
+StartLimitIntervalSec=4
+StartLimitBurst=4
+# restart 5 times every 3 secs, then fail afterwards.
+
+[Service]
+Environment=SHMRK_ENV="staging"
+Environment=DISABLE_STRICT_ORIGIN_CHECKING="true"
+Environment=OUTPUT_DIR="/var/log/shamrock/backend-output.log"
+Type=simple
+Restart=always
+RestartSec=1
+User=shamrock
+WorkingDirectory=/var/shamrock/shamrock-backend
+ExecStart=/usr/bin/npm start &> "$OUTPUT_DIR"
+ExecStop=/bin/kill -TERM $MAINPID 
+ExecReload=/bin/kill -TERM $MAINPID && /usr/bin/npm start &> "$OUTPUT_DIR"

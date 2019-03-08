@@ -20,8 +20,6 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Iterator;
 
-import okhttp3.Call;
-import okhttp3.Callback;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -41,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
     final long MIN_DISTANCE_CHANGE_FOR_UPDATES = 5; // 5 meters
     final long MIN_TIME_BW_UPDATES = 2000; // 2 secs
     //final String SERVER_URL = "https://bbb.homelinux.com/zangsh/zpm";
-    final String SERVER_URL = "https://9f9d2c68.ngrok.io:80/zangsh/zpm";
+    final String SERVER_URL = "http://169.232.247.239:7200/zangsh/zpm";
     String mlocation_permission = Manifest.permission.ACCESS_FINE_LOCATION;
     String minternet_permission = Manifest.permission.INTERNET;
 
@@ -97,10 +95,10 @@ public class MainActivity extends AppCompatActivity {
         String zlj_json = gson.toJson(zlj);
         // now do the http request.
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
-        RequestBody body = RequestBody.create(JSON,zlj_json);
+        RequestBody body = RequestBody.create(JSON, zlj_json);
         Request request = new Request.Builder()
             .url(SERVER_URL)
-            .post(body)
+            .put(body)
             .addHeader("X-BBB-Auth", "lalala")
             .build();
 
@@ -109,7 +107,7 @@ public class MainActivity extends AppCompatActivity {
             public void run () {
                 try {
                     Response response =  http_client.newCall (request).execute ();
-                    ServerResponse json_response = gson.fromJson(response.body().toString(), ServerResponse.class);
+                    ServerResponse json_response = gson.fromJson(response.body().string(), ServerResponse.class);
                     if (json_response.status.equals("success")) {
                         cb.on_success();
                     } else {
@@ -175,7 +173,6 @@ public class MainActivity extends AppCompatActivity {
         }
         // permission granted to use gps. now good:
         gps = new GPSTracker(MainActivity.this,MIN_DISTANCE_CHANGE_FOR_UPDATES, MIN_TIME_BW_UPDATES);
-        //http_client = HttpClient.trustAllSslClient(new OkHttpClient());
         http_client = Http.client();
 
         tap_zangsh.setOnClickListener(new View.OnClickListener(){
@@ -210,7 +207,7 @@ public class MainActivity extends AppCompatActivity {
                 //TODO: process backlog queue here.
                 // see https://stackoverflow.com/questions/24246783/okhttp-response-callbacks-on-the-main-thread
                 start(); // start it again.
-                current_zlj = new ZangshListJson(System.currentTimeMillis() / ((long)1000));
+                current_zlj = new ZangshListJson(System.currentTimeMillis() / ((long)1000), (int)ZPM_INTERVAL_MS/ 1000);
                 reset_zangsh(current_zlj);
 
                 // remove in queue.
@@ -218,7 +215,7 @@ public class MainActivity extends AppCompatActivity {
 
         }.start();
         // initialize current_zlj.
-        current_zlj = new ZangshListJson(System.currentTimeMillis()/((long)1000));
+        current_zlj = new ZangshListJson(System.currentTimeMillis()/((long)1000), (int)ZPM_INTERVAL_MS/ 1000);
         current_zlj.zangsh_taps = new ArrayList<ZangshTap>();
     }
 }
