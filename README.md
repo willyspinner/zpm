@@ -43,7 +43,8 @@ POSSIBLE DEPRECATION: `zpm` may or may not be deleted, depending whether we want
 
 # built with
 * Android SDK (mobile client)
-* Node.js express server (server prototype)
+* Node.js express (server)
+* PostgreSQL database (for storing event occurence data)
 
 # TODO
 * add event type when recording taps
