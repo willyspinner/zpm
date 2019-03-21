@@ -1,5 +1,8 @@
 package com.example.willyspinner.android_mobileapp;
 import android.Manifest;
+import android.animation.ArgbEvaluator;
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.os.CountDownTimer;
@@ -8,7 +11,9 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.animation.Animation;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -29,36 +34,46 @@ import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
     Button tap_zangsh;
+    ImageButton tap_decrease_zangsh;
     TextView zangsh_ometer;
     TextView zangshtap_text;
+    TextView zpm_up_indicator;
+    ObjectAnimator zpm_up_indicator_blink;
+    TextView zpm_server_health_btn;
+    TextView zpm_healthcheck_info_text;
     ProgressBar progressBar;
 
     // variables:
     final long ZPM_INTERVAL_MS = 15000; // milliseconds.
-    final int REQUEST_CODE_PERMISSION = 2;
+    final long HEALTHCHECK_INTERVAL_MS = 5000; // milliseconds.
     final long MIN_DISTANCE_CHANGE_FOR_UPDATES = 5; // 5 meters
     final long MIN_TIME_BW_UPDATES = 2000; // 2 secs
-    //final String SERVER_URL = "https://bbb.homelinux.com/zangsh/zpm";
-    final String SERVER_URL = "http://169.232.247.239:7200/zangsh/zpm";
+    final String SERVER_PUT_URL = "https://bbb.homelinux.com/zangsh/zpm";
+    final String SERVER_HEALTHCHECK_URL = "https://bbb.homelinux.com/zangsh/health";
     String mlocation_permission = Manifest.permission.ACCESS_FINE_LOCATION;
     String minternet_permission = Manifest.permission.INTERNET;
+    final int REQUEST_CODE_PERMISSION = 2;
 
     // data structures & clients.
     ZangshListJson current_zlj; // zangsh list json. zangsh_taps, as well as timestamp_from.
     ArrayList<ZangshListJson> zlj_backlog_queue; // a queue of ZLJs that we failed to send in the past.
     GPSTracker gps;
     OkHttpClient http_client;
+    int secs_since_last_healthcheck = 0;
 
     private void log_toast(String s){
         Toast.makeText(getApplicationContext(), s, Toast.LENGTH_SHORT).show();
     }
 
-    private void insert_zangsh (ArrayList<ZangshTap> list){
+    private boolean insert_zangsh (ArrayList<ZangshTap> list){
         int before_zangsh = list.size();
         Location loc = gps.getLocation();
+        if (loc == null) {
+            return false;
+        }
         if(!gps.canGetLocation) {
             gps.showSettingsAlert();
-            return;
+            return false;
         }
         double current_lat = loc.getLatitude();
         double current_lng = loc.getLongitude();
@@ -74,6 +89,19 @@ public class MainActivity extends AppCompatActivity {
         } else if (before_zangsh == 1 && zangsh_count == 2){
             zangshtap_text.setText("zangsh taps");
         }
+        return true;
+    }
+    private boolean decrease_zangsh () {
+        int size = current_zlj.zangsh_taps.size();
+        if (size == 0){
+            return false;
+        }
+        current_zlj.zangsh_taps.remove(size - 1);
+        zangsh_ometer.setText(Integer.toString(size - 1));
+        if( size == 1) {
+            zangshtap_text.setText("zangsh tap");
+        }
+        return true;
     }
 
     private void reset_zangsh (ZangshListJson zlj) {
@@ -89,7 +117,63 @@ public class MainActivity extends AppCompatActivity {
     /*
     returns true if successful, returns false if not.
      */
-    private void publish_zangsh (ZangshListJson zlj, Publish_zangsh_callback cb) {
+
+    private void http_request_healthcheck (Http_callback cb) {
+        Request request = new Request.Builder()
+                .url(SERVER_HEALTHCHECK_URL)
+                .build();
+
+        new Thread (new Runnable () {
+            @Override
+            public void run () {
+                try {
+                    Response response =  http_client.newCall (request).execute ();
+                    if (response.code() == 200) {
+                        cb.on_success();
+
+                    } else {
+                        cb.on_failure(new IOException());
+                    }
+                } catch (IOException e) {
+                    Log.e("ERROR TING", e.getMessage());
+                    e.printStackTrace ();
+                    cb.on_failure(e);
+                }
+            }
+
+        }).start ();
+    }
+
+    private void do_healthcheck () {
+        http_request_healthcheck( new Http_callback(){
+            @Override
+            public void on_success() {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        zpm_up_indicator.setText("UP");
+                        zpm_up_indicator.setBackgroundColor(getResources().getColor(R.color.uptimeGreen, null));
+                        manageBlinkEffect(false);
+                    }
+                });
+            }
+            @Override
+            public void on_failure(Exception e) {
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        String msg = "Healthcheck failed.";
+                        log_toast(msg);
+                        zpm_up_indicator.setText("DOWN");
+                        zpm_up_indicator.setBackgroundColor(getResources().getColor(R.color.uptimeRed, null));
+                        manageBlinkEffect(true);
+                    }
+                });
+            }
+        });
+    }
+
+    private void publish_zangsh (ZangshListJson zlj, Http_callback cb) {
         // parse to json first.
         Gson gson = new Gson();
         String zlj_json = gson.toJson(zlj);
@@ -97,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
         MediaType JSON = MediaType.get("application/json; charset=utf-8");
         RequestBody body = RequestBody.create(JSON, zlj_json);
         Request request = new Request.Builder()
-            .url(SERVER_URL)
+            .url(SERVER_PUT_URL)
             .put(body)
             .addHeader("X-BBB-Auth", "lalala")
             .build();
@@ -111,16 +195,32 @@ public class MainActivity extends AppCompatActivity {
                     if (json_response.status.equals("success")) {
                         cb.on_success();
                     } else {
-                        cb.on_failure();
+                        cb.on_failure(new IOException());
                     }
                 } catch (IOException e) {
                     Log.e("ERROR TING", e.getMessage());
                     e.printStackTrace ();
-                    cb.on_failure();
+                    cb.on_failure(e);
+                } catch (com.google.gson.JsonSyntaxException jse) {
+                    Log.e("ERROR TING JSE", jse.getMessage());
+                    jse.printStackTrace();
+                    cb.on_failure(jse);
                 }
             }
 
         }).start ();
+    }
+    private void manageBlinkEffect(boolean activated ) {
+        if (activated) {
+            zpm_up_indicator_blink.setDuration(500);
+            zpm_up_indicator_blink.setEvaluator(new ArgbEvaluator());
+            zpm_up_indicator_blink.setRepeatMode(ValueAnimator.REVERSE);
+            zpm_up_indicator_blink.setRepeatCount(Animation.INFINITE);
+            zpm_up_indicator_blink.start();
+        } else {
+            zpm_up_indicator_blink.cancel();
+
+        }
     }
 
     public void sync_process_backlog () {
@@ -129,7 +229,7 @@ public class MainActivity extends AppCompatActivity {
             synchronized (zlj_backlog_queue) {
                 for (Iterator<ZangshListJson> iterator = zlj_backlog_queue.iterator(); iterator.hasNext(); ) {
                     ZangshListJson past_zlj = iterator.next();
-                    publish_zangsh(past_zlj, new Publish_zangsh_callback(){
+                    publish_zangsh(past_zlj, new Http_callback(){
                         @Override
                         public void on_success() {
                             zlj_backlog_queue.remove(past_zlj);
@@ -145,11 +245,20 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         tap_zangsh = (Button) findViewById(R.id.zangsh_button);
+        tap_decrease_zangsh = (ImageButton) findViewById(R.id.button_zangsh_decrementer);
         zangsh_ometer = (TextView) findViewById(R.id.zangsh_ometer);
         zangsh_ometer.setText("0");
         zangshtap_text = (TextView) findViewById(R.id.zangshtaps_text);
         progressBar = (ProgressBar) findViewById(R.id.progressBar);
         progressBar.setMax((int)ZPM_INTERVAL_MS);
+        zpm_up_indicator = (TextView) findViewById(R.id.textview_health_indicator);
+        zpm_up_indicator_blink = ObjectAnimator.ofInt(zpm_up_indicator, "backgroundColor",
+            getResources().getColor(R.color.uptimeRed, null),
+            getResources().getColor(R.color.white, null)
+       //     getResources().getColor(R.color.uptimeGreen, null)
+        );
+        zpm_server_health_btn = (TextView) findViewById(R.id.textview_healthcheck_button);
+        zpm_healthcheck_info_text = (TextView) findViewById(R.id.textview_healthcheck_info);
 
         zlj_backlog_queue = new ArrayList<ZangshListJson>();
         /*      Requesting permissions here */
@@ -175,10 +284,51 @@ public class MainActivity extends AppCompatActivity {
         gps = new GPSTracker(MainActivity.this,MIN_DISTANCE_CHANGE_FOR_UPDATES, MIN_TIME_BW_UPDATES);
         http_client = Http.client();
 
+        do_healthcheck();
+        CountDownTimer healthcheck_timer = new CountDownTimer(HEALTHCHECK_INTERVAL_MS, 1000) {
+            public void onTick(long millisUntilFinished) {
+                secs_since_last_healthcheck += 1;
+                if (secs_since_last_healthcheck == 1) {
+                    zpm_healthcheck_info_text.setText("1 second since last healthcheck.");
+                } else {
+                    zpm_healthcheck_info_text.setText(String.format("%s seconds since last healthcheck.", secs_since_last_healthcheck));
+                }
+            }
+            public void onFinish() {
+                do_healthcheck();
+                secs_since_last_healthcheck = -1;
+                start();
+            }
+
+        }.start();
+        zpm_server_health_btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                healthcheck_timer.cancel();
+                do_healthcheck();
+                healthcheck_timer.start();
+                zpm_healthcheck_info_text.setText("0 seconds since last healthcheck.");
+                secs_since_last_healthcheck = -1;
+            }
+        });
+
+        tap_decrease_zangsh.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                boolean success = decrease_zangsh();
+                if (!success) {
+                    log_toast("Already reached 0 zangshes! IS it really THAT bad?");
+                }
+            }
+        });
+
         tap_zangsh.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View v) {
-                insert_zangsh(current_zlj.zangsh_taps);
+                boolean success = insert_zangsh(current_zlj.zangsh_taps);
+                if (!success) {
+                    log_toast("Unable to get GPS location. Please try again.");
+                }
             }
         });
         new CountDownTimer(ZPM_INTERVAL_MS, 20) {
@@ -191,24 +341,22 @@ public class MainActivity extends AppCompatActivity {
                 secRand.nextBytes(objIdBytes);
                 String objId = Base64.getEncoder().encodeToString(objIdBytes);
                 current_zlj.signature = objId;
-                publish_zangsh(current_zlj, new Publish_zangsh_callback(){
+                publish_zangsh(current_zlj, new Http_callback(){
                     @Override
                     public void on_success() {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
                                 log_toast(String.format("Post to server successful."));
-
                             }
                         });
                     }
                     @Override
-                    public void on_failure() {
+                    public void on_failure(Exception e) {
                         runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                log_toast(String.format("Post to server FAILED. Adding to backlog.."));
-
+                                log_toast(String.format("Post to server FAILED. %s : Adding to backlog..", e.getMessage()));
                             }
                         });
                         synchronized (zlj_backlog_queue) {
