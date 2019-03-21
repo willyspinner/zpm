@@ -1,22 +1,15 @@
 {
-  "name": "shamrock-backend",
+  "name": "zpm_code",
   "version": "1.0.0",
-  "description": "Shamrock's nodejs backend code",
+  "description": "zpm server",
   "main": "app.js",
   "scripts": {
-    "test": "BYPASS_STRIPE=true npm run e2e-stripe",
-    "start": "node app.js"
+    "start": "node app.js",
+    "start-daemon": "daemonize -a -c $PWD -e /var/log/zpm/error.log -o /var/log/zpm/output.log $(which node) app.js"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/johnson-chou8/shamrock-backend.git"
-  },
-  "author": "(Wilson J) - Shamrock",
+  "author": "Wilson J",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/johnson-chou8/shamrock-backend/issues"
-  },
-  "homepage": "https://github.com/johnson-chou8/shamrock-backend#readme",
+  "homepage": "https://github.com/willyspinner/zpm",
   "dependencies": {
     "body-parser": "^1.18.3",
     "compression": "^1.7.3",
